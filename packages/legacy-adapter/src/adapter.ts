@@ -23,6 +23,142 @@ export interface ILegacyAdapter {
 }
 
 /**
+ * Real Google Calendar adapter
+ * Fetches interviews from the user's Google Calendar
+ */
+export class GoogleLegacyAdapter implements ILegacyAdapter {
+  private accessToken: string;
+  private calendarId: string = 'primary';
+  private user: User;
+
+  constructor(accessToken: string, user: User) {
+    this.accessToken = accessToken;
+    this.user = user;
+  }
+
+  async getUpcomingInterviews(limit = 10): Promise<Interview[]> {
+    try {
+      const response = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/${this.calendarId}/events?maxResults=${limit}&orderBy=startTime&singleEvents=true`,
+        {
+          headers: { Authorization: `Bearer ${this.accessToken}` },
+        }
+      );
+
+      if (!response.ok) {
+        console.warn('Failed to fetch calendar events, falling back to mock data');
+        return new MockLegacyAdapter().getUpcomingInterviews(limit);
+      }
+
+      const data = await response.json();
+      const interviews: Interview[] = (data.items || [])
+        .filter((event: any) => event.summary?.includes('[INTERVIEW]'))
+        .map((event: any) => ({
+          id: event.id,
+          candidateName: event.description?.split('\n')[0] || 'Unknown',
+          candidateEmail: event.attendees?.[0]?.email || '',
+          position: event.summary?.replace('[INTERVIEW] ', '') || 'Unknown',
+          brand: 'SEACHEFS',
+          scheduledTime: new Date(event.start.dateTime),
+          duration: Math.round(
+            (new Date(event.end.dateTime).getTime() - new Date(event.start.dateTime).getTime()) / 60000
+          ),
+          recruiterName: this.user.name,
+          recruiterEmail: this.user.email,
+          status: 'scheduled' as const,
+          meetLink: event.conferenceData?.entryPoints?.[0]?.uri || '',
+          notes: event.description || '',
+        }))
+        .slice(0, limit);
+
+      return interviews;
+    } catch (error) {
+      console.error('Calendar fetch error:', error);
+      return new MockLegacyAdapter().getUpcomingInterviews(limit);
+    }
+  }
+
+  async getInterviewDetails(interviewId: string): Promise<Interview | null> {
+    try {
+      const response = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/${this.calendarId}/events/${interviewId}`,
+        {
+          headers: { Authorization: `Bearer ${this.accessToken}` },
+        }
+      );
+
+      if (!response.ok) return null;
+
+      const event = await response.json();
+      return {
+        id: event.id,
+        candidateName: event.description?.split('\n')[0] || 'Unknown',
+        candidateEmail: event.attendees?.[0]?.email || '',
+        position: event.summary?.replace('[INTERVIEW] ', '') || 'Unknown',
+        brand: 'SEACHEFS',
+        scheduledTime: new Date(event.start.dateTime),
+        duration: Math.round(
+          (new Date(event.end.dateTime).getTime() - new Date(event.start.dateTime).getTime()) / 60000
+        ),
+        recruiterName: this.user.name,
+        recruiterEmail: this.user.email,
+        status: 'scheduled' as const,
+        meetLink: event.conferenceData?.entryPoints?.[0]?.uri || '',
+        notes: event.description || '',
+      };
+    } catch (error) {
+      console.error('Interview details error:', error);
+      return null;
+    }
+  }
+
+  async getCurrentUser(): Promise<User | null> {
+    return this.user;
+  }
+
+  async createCalendarEvent(interview: Interview): Promise<{ eventId: string; link?: string }> {
+    try {
+      const response = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/${this.calendarId}/events`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${this.accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            summary: `[INTERVIEW] ${interview.position}`,
+            description: `${interview.candidateName}\n${interview.candidateEmail}`,
+            start: { dateTime: interview.scheduledTime.toISOString() },
+            end: {
+              dateTime: new Date(interview.scheduledTime.getTime() + interview.duration * 60000).toISOString(),
+            },
+            attendees: [{ email: interview.candidateEmail }],
+            conferenceData: {
+              createRequest: {
+                requestId: `interview-${interview.id}`,
+                conferenceSolution: { key: { type: 'hangoutsMeet' } },
+              },
+            },
+          }),
+        }
+      );
+
+      if (!response.ok) throw new Error('Failed to create calendar event');
+
+      const event = await response.json();
+      return {
+        eventId: event.id,
+        link: event.conferenceData?.entryPoints?.[0]?.uri || event.htmlLink,
+      };
+    } catch (error) {
+      console.error('Create event error:', error);
+      throw error;
+    }
+  }
+}
+
+/**
  * Mock implementation of the legacy adapter
  * Used during MVP phase before real Google Calendar/Smartsheet integration
  */
@@ -105,9 +241,11 @@ export class MockLegacyAdapter implements ILegacyAdapter {
 
 /**
  * Factory function to create the appropriate adapter
- * Can be extended to create real adapters for Google Calendar, Smartsheet, etc.
+ * Switches between real (Google Calendar) and mock implementations
  */
-export function createLegacyAdapter(): ILegacyAdapter {
-  // Start with mock, can be swapped for real implementation
+export function createLegacyAdapter(accessToken?: string, user?: User): ILegacyAdapter {
+  if (accessToken && user) {
+    return new GoogleLegacyAdapter(accessToken, user);
+  }
   return new MockLegacyAdapter();
 }
