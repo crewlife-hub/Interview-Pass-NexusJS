@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "skip Lib Check": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"],
+      "@apps/*": ["./apps/*"],
+      "@packages/*": ["./packages/*"],
+      "@shared/*": ["./packages/shared/src/*"],
+      "@ui/*": ["./packages/ui/src/*"],
+      "@legacy-adapter/*": ["./packages/legacy-adapter/src/*"]
+    }
+  },
+  "include": [],
+  "references": [
+    { "path": "apps/web" },
+    { "path": "apps/api" },
+    { "path": "packages/shared" },
+    { "path": "packages/ui" },
+    { "path": "packages/legacy-adapter" }
+  ]
+}
